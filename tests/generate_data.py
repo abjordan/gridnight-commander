@@ -1,41 +1,65 @@
+import glob
 import os
+
 import gridfs
 import pymongo
+
 from dotenv import load_dotenv
 
-MONGOTERM_DB = 'mongoterm-test'
+MONGOTERM_DB = "gnc-test"
 
 load_dotenv()
 
-user = os.getenv('MONGO_ROOT_USER')
-passwd = os.getenv('MONGO_ROOT_PASSWORD')
+user = os.getenv("MONGO_ROOT_USER")
+passwd = os.getenv("MONGO_ROOT_PASSWORD")
+server = os.getenv("MONGO_SERVER")
+port = os.getenv("MONGO_PORT")
 
 client = pymongo.MongoClient(
-    f'mongodb://{user}:{passwd}@localhost:27017/')
+    f"mongodb://{user}:{passwd}@{server}:{port}/")
 
+try:
+    import magic
+    mime = magic.Magic(mime=True)
+    def get_mime_type(filename):
+        return mime.from_file(fname)
+except ImportError as ie:
+    import mimetypes
+    def get_mime_type(filename):
+        return mimetypes.guess_type(filename)[0]
+
+
+print("💣 Nuking test database...")
 client.drop_database(MONGOTERM_DB)
 db = client[MONGOTERM_DB]
-fs = gridfs.GridFS(db)
+#fs = gridfs.GridFS(db)
 
-# Create a couple of files for GridFS
-with open('test-data/python-dbs.txt', 'rb') as infile:
-    file_id = fs.put(
-        infile, 
-        filename='python-dbs.txt',
-        content_type='text/plain',
-        description='Sample file',
-    )
-    
-with open('test-data/ai-risks.md', 'rb') as infile:
-    file_id = fs.put(
-        infile, filename='ai-risks.md',
-        content_type='text/markdown',
-        description='Another sample file'
-    )
+dune_bucket = gridfs.GridFSBucket(db, bucket_name="Dune")
+programming_bucket = gridfs.GridFSBucket(db, bucket_name="Programming")
+skills_bucket = gridfs.GridFSBucket(db, bucket_name="Life Skills")
 
-with open('test-data/brush-your-teeth.txt', 'rb') as infile:
-    file_id = fs.put(
-        infile, filename='brush-your-teeth.txt',
-        content_type='text/plain',
-        description='Sample, once more'
-    )
+print("↗️ Uploading files...")
+
+for fname in glob.glob("test-data/dune/*"):
+    with open(fname, "rb") as file_data:
+        content_type = get_mime_type(fname)
+        dune_bucket.upload_from_stream(
+            os.path.basename(fname), file_data,
+            metadata={"contentType": content_type})
+        print(f"    📂 {fname}")
+
+for fname in glob.glob("test-data/programming/*"):
+    with open(fname, "rb") as file_data:
+        content_type = get_mime_type(fname)
+        programming_bucket.upload_from_stream(
+            os.path.basename(fname), file_data,
+            metadata={"contentType": content_type})
+        print(f"    📂 {fname}")
+
+for fname in glob.glob("test-data/skills/*"):
+    with open(fname, "rb") as file_data:
+        content_type = get_mime_type(fname)
+        skills_bucket.upload_from_stream(
+            os.path.basename(fname), file_data,
+            metadata={"contentType": content_type})
+        print(f"    📂 {fname}")

@@ -1,0 +1,6 @@
+# Paul Atreides: A Biography
+
+Paul Atreides is the central protagonist of Frank Herbert's science fiction masterpiece "Dune." Born to Duke Leto Atreides and Lady Jessica (a Bene Gesserit who defied her order by bearing a son instead of a daughter), Paul was raised as the heir to House Atreides on the oceanic world of Caladan.
+His life changes dramatically when his family is ordered to take stewardship of Arrakis (Dune), the desert planet that is the only source of the invaluable spice melange. On Arrakis, Paul survives the betrayal and downfall of House Atreides orchestrated by their enemies, House Harkonnen and the Emperor.
+Fleeing into the desert with his mother, Paul is accepted by the native Fremen people and rises to become their messianic leader "Muad'Dib." His prescient abilities, enhanced by exposure to the spice and his genetic heritage, allow him to see possible futures. Paul ultimately leads the Fremen in a revolution that topples the Emperor and places him on the Imperial throne, fulfilling ancient prophecies while simultaneously fearing the jihad he foresees in his name.
+Throughout the narrative, Paul struggles with the burden of his prescience and the tension between his humanity and his emerging role as a figure of religious and political power.
