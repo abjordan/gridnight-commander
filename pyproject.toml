@@ -1,0 +1,14 @@
+[project]
+name = "gridnight-commander"
+version = "0.1.0"
+description = "GridNight Commander is a GridFS terminal file manager"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "pymongo>=4.11.3",
+    "python-dotenv>=1.0.1",
+    "textual>=2.1.2",
+]
+
+[project.scripts]
+gnc = "gridnight_commander.cli:main"
