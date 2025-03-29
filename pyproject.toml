@@ -10,5 +10,8 @@ dependencies = [
     "textual>=2.1.2",
 ]
 
+[tool.uv]
+package = true
+
 [project.scripts]
 gnc = "gridnight_commander.cli:main"
