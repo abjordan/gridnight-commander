@@ -15,3 +15,7 @@ package = true
 
 [project.scripts]
 gnc = "gridnight_commander.cli:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
