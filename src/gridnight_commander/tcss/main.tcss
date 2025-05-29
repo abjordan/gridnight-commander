@@ -27,8 +27,14 @@ QuitScreen {
     align: center middle;
 }
 
-ConnectScreen {
+ConnectionScreen {
     align: center middle;
+}
+
+#connectspinner {
+    grid-size: 1;
+    grid-gutter: 1 2;
+
 }
 
 #connectdialog {

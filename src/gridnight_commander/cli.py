@@ -2,19 +2,24 @@ import os
 
 from dotenv import load_dotenv
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Grid
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label
+from textual.worker import Worker, WorkerState
 
-class ConnectionScreen(ModalScreen):
+from .gridfs_manager import GridFsManager
+from .util import escape_markup
+
+class ConnectionScreen(ModalScreen[GridFsManager]):
     """Screen with a dialog to connect to a server"""
 
     def compose(self) -> ComposeResult:
         yield Grid(
             Label("Connect to Server...", id="popup_title"),
-            Input("mongodb://localhost:27017/"),
+            Input("mongodb://localhost:27017/", id="connect_str"),
             Button("Connect", variant="primary", id="connect_btn"),
             Button("Cancel", id="cancel_btn"),
             id="connectdialog"
@@ -22,10 +27,39 @@ class ConnectionScreen(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel_btn":
-            self.app.pop_screen()
+            self.dismiss(None)
         else:
-            # Do whatever
-            self.app.pop_screen()
+            # start connection attempt
+            self.query_one("#connectdialog").loading = True
+
+            conn_str = self.query_one("#connect_str", Input)
+            print("Connection string: " + conn_str.value)
+            self.do_connection(conn_str.value)
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        self.log.info(f"Worker state changed: {event.state}")
+        if event.state == WorkerState.SUCCESS:
+            self.notify("Connected!", severity="information")
+            self.query_one("#connectdialog").loading = False
+            
+        elif event.state == WorkerState.ERROR:
+            self.log.error("Worker failed.")
+            self.notify(f"Connection failed: {escape_markup(str(event.worker.error))}", severity="error")
+            self.query_one("#connectdialog").loading = False
+
+    @work(exclusive=True, exit_on_error=False)
+    async def do_connection(self, connection_string: str):
+        try:
+            # Create a MongoClient instance
+            client = GridFsManager(connection_string)
+            # Test the connection
+            await client.connect()
+            await client.test_connection()
+            self.dismiss(client)
+        except Exception as e:
+            self.app.log.error(f"Connection failed: {e}")
+            raise e
+
 
 class QuitScreen(ModalScreen):
     """Screen with a dialog to quit."""
@@ -44,8 +78,10 @@ class QuitScreen(ModalScreen):
         else:
             self.app.pop_screen()
 
-class TreeThing(Tree):
+class MongoView(Tree):
     def compose(self) -> ComposeResult:
+        # Want a list of the collections in the datastore, where
+        # the top level tree element is the collection name
         tree: Tree[str] = Tree("Dune")
         tree.root.expand()
         characters = tree.root.add("Characters", expand=True)
@@ -68,9 +104,10 @@ class GridFsBrowser(App):
     ]
 
     def compose(self) -> ComposeResult:
+        self.log.info("Staring GNC")
         yield Header()
         with Vertical(classes="filetree"):
-            yield TreeThing("MongoView", classes="borderless")
+            yield MongoView("MongoView", classes="borderless")
         yield Static("TEST", classes="preview")
         yield Footer()
 
