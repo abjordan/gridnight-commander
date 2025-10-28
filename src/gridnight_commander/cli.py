@@ -87,23 +87,27 @@ class MongoView(Tree):
 
     def watch_client(self, new_client: GridFsManager | None):
         """Called when client reactive property changes"""
+        self.app.log.info(f"watch_client called with: {new_client}")
         if new_client is None:
             # Disconnected - show empty tree
             self.reset("GridFS Browser")
         else:
             # Connected - populate tree with buckets and files
+            self.app.log.info("Starting tree population worker")
             worker = self._populate_tree_worker(new_client)
 
     @work(exclusive=True)
     async def _populate_tree_worker(self, manager: GridFsManager):
         """Populate the tree with GridFS buckets and files"""
         try:
+            self.app.log.info("Worker started - populating tree")
             # Clear existing tree and set root label
             self.reset("GridFS Browser")
             self.root.expand()
 
             # Get list of buckets
             buckets = await manager.list_gridfs_buckets()
+            self.app.log.info(f"Found {len(buckets)} buckets: {buckets}")
 
             if not buckets:
                 self.root.add_leaf("(no buckets found)")
@@ -165,7 +169,7 @@ class GridFsBrowser(App):
         self.log.info("Staring GNC")
         yield Header()
         with Vertical(classes="filetree"):
-            yield MongoView("MongoView", classes="borderless").data_bind(client=GridFsBrowser.client)
+            yield MongoView("MongoView", classes="borderless", id="mongo_view")
         yield Static("TEST", classes="preview")
         yield Footer()
 
@@ -173,12 +177,15 @@ class GridFsBrowser(App):
         button_id = event.button.id
         if button_id == "connect":
             pass
-    
+
     async def action_do_connect(self) -> None:
         client = await self.push_screen(ConnectionScreen())
         if client:
             self.title = "GridnightCommander - Connected"
             self.client = client
+            # Directly update the MongoView
+            mongo_view = self.query_one("#mongo_view", MongoView)
+            mongo_view.client = client
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())
