@@ -99,7 +99,16 @@
 - Test large files (loading indicator appears)
 - Test rapid clicking between files (cancellation/queuing)
 
-**Status**: Not Started
+**Status**: Complete ✅
+
+**Implementation Notes**:
+- Added `get_file_content()` method to GridFsManager that downloads files from GridFS
+- Created FilePreview widget using Vertical container with VerticalScroll for content
+- Handles tree selection events with `on_tree_node_selected()`
+- Dynamically switches between Static (text) and Markdown (rendered) widgets
+- Displays file metadata (filename, size, upload date, content type)
+- Text files display as plain text, .md files render with Markdown formatting
+- Binary files show appropriate message
 
 ---
 

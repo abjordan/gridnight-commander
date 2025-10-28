@@ -73,3 +73,35 @@ class GridFsManager:
             files.append(file_info)
 
         return files
+
+    async def get_file_content(self, bucket_name: str, file_id):
+        """
+        Download a file's content from GridFS.
+        :param bucket_name: Name of the GridFS bucket
+        :param file_id: The _id of the file to download
+        :return: Dictionary with content (bytes) and metadata
+        """
+        if self.db is None:
+            return None
+
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=bucket_name)
+
+        try:
+            # Open the file for reading
+            grid_out = await bucket.open_download_stream(file_id)
+
+            # Read the content
+            content = await grid_out.read()
+
+            # Return content and metadata
+            return {
+                'content': content,
+                'filename': grid_out.filename,
+                'length': grid_out.length,
+                'uploadDate': grid_out.upload_date,
+                'metadata': grid_out.metadata or {},
+                'contentType': grid_out.metadata.get('contentType') if grid_out.metadata else None
+            }
+        except Exception as e:
+            print(f"Error downloading file {file_id}: {e}")
+            raise e

@@ -2,13 +2,15 @@ import os
 
 from dotenv import load_dotenv
 
+from datetime import datetime
+
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, Grid
+from textual.containers import Horizontal, Vertical, Grid, VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label
+from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown
 from textual.message import Message as TextualMessage
 
 from gridfs_manager import GridFsManager
@@ -144,6 +146,74 @@ class MongoView(Tree):
             self.reset("GridFS Browser")
             self.root.add_leaf(f"Error: {str(e)}")
 
+
+class FilePreview(Vertical):
+    """Widget for displaying file content and metadata"""
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="preview_scroll"):
+            yield Static("Select a file to preview", id="preview_content")
+        yield Static("", id="preview_metadata")
+
+    def show_file(self, file_data: dict) -> None:
+        """Display file content and metadata"""
+        content = file_data['content']
+        filename = file_data['filename']
+        content_type = file_data.get('contentType', 'text/plain')
+        length = file_data['length']
+        upload_date = file_data['uploadDate']
+
+        # Get the scroll container
+        scroll = self.query_one("#preview_scroll", VerticalScroll)
+
+        # Remove all children from scroll container
+        scroll.remove_children()
+
+        # Try to decode as text
+        try:
+            text_content = content.decode('utf-8')
+
+            # If it's a markdown file, render it
+            if filename.endswith('.md'):
+                scroll.mount(Markdown(text_content))
+            else:
+                # Plain text
+                scroll.mount(Static(text_content))
+
+        except UnicodeDecodeError:
+            # Binary file
+            scroll.mount(Static(f"[Binary file - {length} bytes]\nCannot display binary content."))
+
+        # Format metadata
+        date_str = upload_date.strftime("%Y-%m-%d %H:%M:%S") if upload_date else "Unknown"
+        size_str = self._format_size(length)
+
+        metadata_text = f"\n---\n📄 {filename}\n📦 {size_str}\n🕒 {date_str}"
+        if content_type:
+            metadata_text += f"\n📋 {content_type}"
+
+        metadata_widget = self.query_one("#preview_metadata", Static)
+        metadata_widget.update(metadata_text)
+
+    def _format_size(self, size: int) -> str:
+        """Format byte size to human readable"""
+        if size < 1024:
+            return f"{size}B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f}KB"
+        else:
+            return f"{size / (1024 * 1024):.1f}MB"
+
+    def clear(self) -> None:
+        """Clear the preview"""
+        scroll = self.query_one("#preview_scroll", VerticalScroll)
+        scroll.remove_children()
+        scroll.mount(Static("Select a file to preview"))
+
+        metadata_widget = self.query_one("#preview_metadata", Static)
+        metadata_widget.update("")
+
+
 class GridFsBrowser(App):
     
     TITLE = "GridnightCommander - Disconnected"
@@ -164,7 +234,7 @@ class GridFsBrowser(App):
         yield Header()
         with Vertical(classes="filetree"):
             yield MongoView("MongoView", classes="borderless", id="mongo_view")
-        yield Static("TEST", classes="preview")
+        yield FilePreview(classes="preview", id="file_preview")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -183,6 +253,39 @@ class GridFsBrowser(App):
         # Update the MongoView with the connected client
         mongo_view = self.query_one("#mongo_view", MongoView)
         mongo_view.client = message.client
+
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        """Handle tree node selection to preview files"""
+        node = event.node
+
+        # Check if node has file data (leaf nodes with file info)
+        if hasattr(node, 'data') and node.data and isinstance(node.data, dict):
+            if 'file_info' in node.data:
+                # This is a file node
+                bucket = node.data['bucket']
+                file_info = node.data['file_info']
+                file_id = file_info['_id']
+
+                # Load and preview the file (worker will be started automatically)
+                worker = self._load_file_preview(bucket, file_id)
+
+    @work(exclusive=True)
+    async def _load_file_preview(self, bucket: str, file_id) -> None:
+        """Load file content and update preview"""
+        try:
+            if self.client is None:
+                return
+
+            # Get the file content
+            file_data = await self.client.get_file_content(bucket, file_id)
+
+            if file_data:
+                # Update the preview widget
+                preview = self.query_one("#file_preview", FilePreview)
+                preview.show_file(file_data)
+        except Exception as e:
+            self.log.error(f"Error loading file preview: {e}")
+            self.notify(f"Error loading file: {escape_markup(str(e))}", severity="error")
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())
