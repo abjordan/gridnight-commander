@@ -9,13 +9,19 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label
-from textual.worker import Worker, WorkerState
+from textual.message import Message as TextualMessage
 
-from .gridfs_manager import GridFsManager
-from .util import escape_markup
+from gridfs_manager import GridFsManager
+from util import escape_markup
 
-class ConnectionScreen(ModalScreen[GridFsManager]):
+class ConnectionScreen(ModalScreen[None]):
     """Screen with a dialog to connect to a server"""
+
+    class Connected(TextualMessage):
+        """Message sent when connection succeeds"""
+        def __init__(self, client: GridFsManager) -> None:
+            self.client = client
+            super().__init__()
 
     def compose(self) -> ComposeResult:
         yield Grid(
@@ -28,28 +34,16 @@ class ConnectionScreen(ModalScreen[GridFsManager]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel_btn":
-            self.dismiss(None)
+            self.dismiss()
         else:
             # start connection attempt
             self.query_one("#connectdialog").loading = True
-
             conn_str = self.query_one("#connect_str", Input)
-            print("Connection string: " + conn_str.value)
-            self.do_connection(conn_str.value)
+            # Run the connection as a background task
+            self.run_worker(self._do_connection_async(conn_str.value))
 
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        self.log.info(f"Worker state changed: {event.state}")
-        if event.state == WorkerState.SUCCESS:
-            self.notify("Connected!", severity="information")
-            self.query_one("#connectdialog").loading = False
-            
-        elif event.state == WorkerState.ERROR:
-            self.log.error("Worker failed.")
-            self.notify(f"Connection failed: {escape_markup(str(event.worker.error))}", severity="error")
-            self.query_one("#connectdialog").loading = False
-
-    @work(exclusive=True, exit_on_error=False)
-    async def do_connection(self, connection_string: str):
+    async def _do_connection_async(self, connection_string: str) -> None:
+        """Async connection that posts a message on success"""
         try:
             # Create a MongoClient instance
             # Use 'gnc-test' database for now (TODO: make this configurable)
@@ -57,10 +51,15 @@ class ConnectionScreen(ModalScreen[GridFsManager]):
             # Test the connection
             await client.connect()
             await client.test_connection()
-            self.dismiss(client)
+            self.notify("Connected!", severity="information")
+            # Post message to parent app
+            self.post_message(self.Connected(client))
+            # Dismiss the dialog
+            self.dismiss()
         except Exception as e:
             self.app.log.error(f"Connection failed: {e}")
-            raise e
+            self.notify(f"Connection failed: {escape_markup(str(e))}", severity="error")
+            self.query_one("#connectdialog").loading = False
 
 
 class QuitScreen(ModalScreen):
@@ -82,32 +81,27 @@ class QuitScreen(ModalScreen):
 
 class MongoView(Tree):
 
-    data = reactive({})
-    client: reactive[GridFsManager | None] = reactive(None)
+    client: GridFsManager | None = reactive(None, init=False)
 
     def watch_client(self, new_client: GridFsManager | None):
         """Called when client reactive property changes"""
-        self.app.log.info(f"watch_client called with: {new_client}")
         if new_client is None:
             # Disconnected - show empty tree
             self.reset("GridFS Browser")
         else:
             # Connected - populate tree with buckets and files
-            self.app.log.info("Starting tree population worker")
             worker = self._populate_tree_worker(new_client)
 
     @work(exclusive=True)
     async def _populate_tree_worker(self, manager: GridFsManager):
         """Populate the tree with GridFS buckets and files"""
         try:
-            self.app.log.info("Worker started - populating tree")
             # Clear existing tree and set root label
             self.reset("GridFS Browser")
             self.root.expand()
 
             # Get list of buckets
             buckets = await manager.list_gridfs_buckets()
-            self.app.log.info(f"Found {len(buckets)} buckets: {buckets}")
 
             if not buckets:
                 self.root.add_leaf("(no buckets found)")
@@ -178,14 +172,17 @@ class GridFsBrowser(App):
         if button_id == "connect":
             pass
 
-    async def action_do_connect(self) -> None:
-        client = await self.push_screen(ConnectionScreen())
-        if client:
-            self.title = "GridnightCommander - Connected"
-            self.client = client
-            # Directly update the MongoView
-            mongo_view = self.query_one("#mongo_view", MongoView)
-            mongo_view.client = client
+    def action_do_connect(self) -> None:
+        """Open the connection dialog"""
+        self.push_screen(ConnectionScreen())
+
+    def on_connection_screen_connected(self, message: ConnectionScreen.Connected) -> None:
+        """Handle successful connection from ConnectionScreen"""
+        self.title = "GridnightCommander - Connected"
+        self.client = message.client
+        # Update the MongoView with the connected client
+        mongo_view = self.query_one("#mongo_view", MongoView)
+        mongo_view.client = message.client
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())
