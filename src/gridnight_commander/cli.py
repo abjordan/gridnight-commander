@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Grid
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label
@@ -51,7 +52,8 @@ class ConnectionScreen(ModalScreen[GridFsManager]):
     async def do_connection(self, connection_string: str):
         try:
             # Create a MongoClient instance
-            client = GridFsManager(connection_string)
+            # Use 'gnc-test' database for now (TODO: make this configurable)
+            client = GridFsManager(connection_string, db_name='gnc-test')
             # Test the connection
             await client.connect()
             await client.test_connection()
@@ -79,21 +81,77 @@ class QuitScreen(ModalScreen):
             self.app.pop_screen()
 
 class MongoView(Tree):
-    def compose(self) -> ComposeResult:
-        # Want a list of the collections in the datastore, where
-        # the top level tree element is the collection name
-        tree: Tree[str] = Tree("Dune")
-        tree.root.expand()
-        characters = tree.root.add("Characters", expand=True)
-        characters.add_leaf("Paul")
-        characters.add_leaf("Jessica")
-        characters.add_leaf("Chani")
-        yield tree
+
+    data = reactive({})
+    client: reactive[GridFsManager | None] = reactive(None)
+
+    def watch_client(self, new_client: GridFsManager | None):
+        """Called when client reactive property changes"""
+        if new_client is None:
+            # Disconnected - show empty tree
+            self.reset("GridFS Browser")
+        else:
+            # Connected - populate tree with buckets and files
+            worker = self._populate_tree_worker(new_client)
+
+    @work(exclusive=True)
+    async def _populate_tree_worker(self, manager: GridFsManager):
+        """Populate the tree with GridFS buckets and files"""
+        try:
+            # Clear existing tree and set root label
+            self.reset("GridFS Browser")
+            self.root.expand()
+
+            # Get list of buckets
+            buckets = await manager.list_gridfs_buckets()
+
+            if not buckets:
+                self.root.add_leaf("(no buckets found)")
+                return
+
+            # For each bucket, create a node and populate with files
+            for bucket_name in buckets:
+                files = await manager.list_files_in_bucket(bucket_name)
+
+                # Create bucket node with file count
+                file_count = len(files)
+                bucket_label = f"{bucket_name}/ ({file_count} files)"
+                bucket_node = self.root.add(bucket_label, expand=False)
+
+                if not files:
+                    bucket_node.add_leaf("(empty)")
+                else:
+                    # Add each file as a leaf node
+                    for file_info in files:
+                        filename = file_info['filename']
+                        # Format file size (bytes to KB/MB)
+                        size = file_info['length']
+                        if size < 1024:
+                            size_str = f"{size}B"
+                        elif size < 1024 * 1024:
+                            size_str = f"{size / 1024:.1f}KB"
+                        else:
+                            size_str = f"{size / (1024 * 1024):.1f}MB"
+
+                        file_label = f"{filename} ({size_str})"
+                        # Store file info as node data for later use
+                        file_node = bucket_node.add_leaf(file_label)
+                        file_node.data = {
+                            'bucket': bucket_name,
+                            'file_info': file_info
+                        }
+
+        except Exception as e:
+            self.app.log.error(f"Error populating tree: {e}")
+            self.reset("GridFS Browser")
+            self.root.add_leaf(f"Error: {str(e)}")
 
 class GridFsBrowser(App):
     
     TITLE = "GridnightCommander - Disconnected"
     CSS_PATH = "tcss/main.tcss"
+
+    client: reactive[GridFsManager | None] = reactive(None)
 
     # def on_mount(self):
     #     self.screen.styles.background = "darkblue"
@@ -107,17 +165,20 @@ class GridFsBrowser(App):
         self.log.info("Staring GNC")
         yield Header()
         with Vertical(classes="filetree"):
-            yield MongoView("MongoView", classes="borderless")
+            yield MongoView("MongoView", classes="borderless").data_bind(client=GridFsBrowser.client)
         yield Static("TEST", classes="preview")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
         if button_id == "connect":
-            self.title = "GridnightCommander - Connected"
+            pass
     
-    def action_do_connect(self) -> None:
-        self.push_screen(ConnectionScreen())        
+    async def action_do_connect(self) -> None:
+        client = await self.push_screen(ConnectionScreen())
+        if client:
+            self.title = "GridnightCommander - Connected"
+            self.client = client
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())

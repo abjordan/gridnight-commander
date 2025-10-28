@@ -38,7 +38,7 @@ class GridFsManager:
         """List all GridFS buckets in the database"""
         if self.db is None:
             return []
-        
+
         collection_names = await self.db.list_collection_names()
         # Find collections ending with '.files'
         buckets = []
@@ -46,5 +46,30 @@ class GridFsManager:
             if name.endswith('.files'):
                 bucket_name = name[:-6]  # Remove '.files' suffix
                 buckets.append(bucket_name)
-        
+
         return buckets
+
+    async def list_files_in_bucket(self, bucket_name: str = 'fs'):
+        """
+        List all files in a GridFS bucket with metadata.
+        :param bucket_name: Name of the GridFS bucket (default: 'fs')
+        :return: List of dicts with file info (id, filename, length, uploadDate, metadata)
+        """
+        if self.db is None:
+            return []
+
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=bucket_name)
+        files = []
+
+        # Use find() to get all files in the bucket
+        async for grid_file in bucket.find():
+            file_info = {
+                '_id': grid_file._id,
+                'filename': grid_file.filename,
+                'length': grid_file.length,
+                'uploadDate': grid_file.upload_date,
+                'metadata': grid_file.metadata or {}
+            }
+            files.append(file_info)
+
+        return files
