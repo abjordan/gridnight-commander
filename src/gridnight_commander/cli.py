@@ -10,7 +10,7 @@ from textual.containers import Horizontal, Vertical, Grid, VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
-from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown
+from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown, Select
 from textual.message import Message as TextualMessage
 
 from gridfs_manager import GridFsManager
@@ -81,6 +81,83 @@ class QuitScreen(ModalScreen):
         else:
             self.app.pop_screen()
 
+
+class UploadDialog(ModalScreen[None]):
+    """Screen with a dialog to upload files"""
+
+    class FileUploaded(TextualMessage):
+        """Message sent when file upload succeeds"""
+        def __init__(self, bucket: str, filename: str) -> None:
+            self.bucket = bucket
+            self.filename = filename
+            super().__init__()
+
+    def __init__(self, buckets: list[str], *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.buckets = buckets
+
+    def compose(self) -> ComposeResult:
+        # Create bucket options
+        bucket_options = [(bucket, bucket) for bucket in self.buckets]
+
+        yield Grid(
+            Label("Upload File to GridFS", id="upload_title"),
+            Label("File Path:"),
+            Input(placeholder="/path/to/file.txt", id="file_path"),
+            Label("Bucket:"),
+            Select(bucket_options, id="bucket_select", allow_blank=False),
+            Label("Filename (optional):"),
+            Input(placeholder="Leave blank to use original filename", id="filename_input"),
+            Button("Upload", variant="primary", id="upload_btn"),
+            Button("Cancel", id="cancel_btn"),
+            id="uploaddialog"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_btn":
+            self.dismiss()
+        else:
+            # Start upload
+            self.query_one("#uploaddialog").loading = True
+            file_path = self.query_one("#file_path", Input).value
+            bucket_select = self.query_one("#bucket_select", Select)
+            bucket = bucket_select.value
+            filename = self.query_one("#filename_input", Input).value or None
+
+            # Run upload
+            self.run_worker(self._do_upload(file_path, bucket, filename))
+
+    async def _do_upload(self, file_path: str, bucket: str, filename: str | None) -> None:
+        """Async upload that posts a message on success"""
+        try:
+            import os
+
+            # Validate file exists
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            # Get the GridFsManager from the app
+            client = self.app.client
+            if client is None:
+                raise Exception("Not connected to database")
+
+            # Upload the file
+            file_id = await client.upload_file(bucket, file_path, filename)
+
+            uploaded_filename = filename or os.path.basename(file_path)
+            self.notify(f"Uploaded {uploaded_filename} to {bucket}", severity="information")
+
+            # Post message to parent app
+            self.post_message(self.FileUploaded(bucket, uploaded_filename))
+
+            # Dismiss the dialog
+            self.dismiss()
+        except Exception as e:
+            self.app.log.error(f"Upload failed: {e}")
+            self.notify(f"Upload failed: {escape_markup(str(e))}", severity="error")
+            self.query_one("#uploaddialog").loading = False
+
+
 class MongoView(Tree):
 
     client: GridFsManager | None = reactive(None, init=False)
@@ -93,6 +170,11 @@ class MongoView(Tree):
         else:
             # Connected - populate tree with buckets and files
             worker = self._populate_tree_worker(new_client)
+
+    def refresh_tree(self):
+        """Force refresh the tree with current client"""
+        if self.client:
+            worker = self._populate_tree_worker(self.client)
 
     @work(exclusive=True)
     async def _populate_tree_worker(self, manager: GridFsManager):
@@ -226,6 +308,7 @@ class GridFsBrowser(App):
 
     BINDINGS = [
         ("c", "do_connect", "Connect to server"),
+        ("u", "do_upload", "Upload file"),
         ("q", "request_quit", "Quit")
     ]
 
@@ -286,6 +369,30 @@ class GridFsBrowser(App):
         except Exception as e:
             self.log.error(f"Error loading file preview: {e}")
             self.notify(f"Error loading file: {escape_markup(str(e))}", severity="error")
+
+    async def action_do_upload(self) -> None:
+        """Open the upload dialog"""
+        if self.client is None:
+            self.notify("Not connected to database", severity="warning")
+            return
+
+        # Get list of buckets
+        try:
+            buckets = await self.client.list_gridfs_buckets()
+            if not buckets:
+                self.notify("No buckets found. Connect to a database with GridFS buckets.", severity="warning")
+                return
+
+            self.push_screen(UploadDialog(buckets))
+        except Exception as e:
+            self.log.error(f"Error getting buckets: {e}")
+            self.notify(f"Error: {escape_markup(str(e))}", severity="error")
+
+    def on_upload_dialog_file_uploaded(self, message: UploadDialog.FileUploaded) -> None:
+        """Handle successful file upload"""
+        # Refresh the tree to show the new file
+        mongo_view = self.query_one("#mongo_view", MongoView)
+        mongo_view.refresh_tree()
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())

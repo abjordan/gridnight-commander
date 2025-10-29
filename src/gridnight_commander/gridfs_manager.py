@@ -105,3 +105,47 @@ class GridFsManager:
         except Exception as e:
             print(f"Error downloading file {file_id}: {e}")
             raise e
+
+    async def upload_file(self, bucket_name: str, local_path: str, filename: str | None = None):
+        """
+        Upload a file to GridFS.
+        :param bucket_name: Name of the GridFS bucket
+        :param local_path: Path to the local file to upload
+        :param filename: Optional filename (defaults to basename of local_path)
+        :return: The _id of the uploaded file
+        """
+        if self.db is None:
+            raise Exception("Not connected to database")
+
+        import os
+        import mimetypes
+
+        # Use basename of local_path if filename not provided
+        if filename is None:
+            filename = os.path.basename(local_path)
+
+        # Detect MIME type
+        content_type, _ = mimetypes.guess_type(local_path)
+
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=bucket_name)
+
+        try:
+            # Read file content
+            with open(local_path, 'rb') as f:
+                file_content = f.read()
+
+            # Upload to GridFS
+            metadata = {}
+            if content_type:
+                metadata['contentType'] = content_type
+
+            file_id = await bucket.upload_from_stream(
+                filename,
+                file_content,
+                metadata=metadata
+            )
+
+            return file_id
+        except Exception as e:
+            print(f"Error uploading file {local_path}: {e}")
+            raise e

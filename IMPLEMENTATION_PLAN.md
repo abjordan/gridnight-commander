@@ -153,7 +153,15 @@
 - Verify uploaded file appears in tree
 - Verify uploaded file can be previewed
 
-**Status**: Not Started
+**Status**: Complete ✅
+
+**Implementation Notes**:
+- Added `upload_file()` method to GridFsManager with MIME type detection
+- Created UploadDialog modal with file path input, bucket selector, and optional filename
+- Added `u` keyboard shortcut to trigger upload dialog
+- Upload dialog validates file exists before uploading
+- Tree automatically refreshes after successful upload via `refresh_tree()` method
+- Success/error notifications provide user feedback
 
 ---
 
