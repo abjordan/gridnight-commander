@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 
 class GridFsManager:
@@ -74,7 +75,7 @@ class GridFsManager:
 
         return files
 
-    async def get_file_content(self, bucket_name: str, file_id):
+    async def get_file_content(self, bucket_name: str, file_id: Any):
         """
         Download a file's content from GridFS.
         :param bucket_name: Name of the GridFS bucket
@@ -150,7 +151,7 @@ class GridFsManager:
             print(f"Error uploading file {local_path}: {e}")
             raise e
 
-    async def delete_file(self, bucket_name: str, file_id):
+    async def delete_file(self, bucket_name: str, file_id: Any):
         """
         Delete a file from GridFS.
         :param bucket_name: Name of the GridFS bucket

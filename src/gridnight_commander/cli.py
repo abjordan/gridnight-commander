@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -7,7 +8,7 @@ from datetime import datetime
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Grid, VerticalScroll
-from textual.reactive import reactive
+from textual.reactive import var
 from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown, Select
@@ -124,8 +125,13 @@ class UploadDialog(ModalScreen[None]):
             bucket = bucket_select.value
             filename = self.query_one("#filename_input", Input).value or None
 
-            # Run upload
-            self.run_worker(self._do_upload(file_path, bucket, filename))
+            # Validate bucket is selected
+            if isinstance(bucket, str):
+                # Run upload
+                self.run_worker(self._do_upload(file_path, bucket, filename))
+            else:
+                self.app.notify("Please select a bucket", severity="error")
+                self.query_one("#uploaddialog").loading = False
 
     async def _do_upload(self, file_path: str, bucket: str, filename: str | None) -> None:
         """Async upload that posts a message on success"""
@@ -137,7 +143,7 @@ class UploadDialog(ModalScreen[None]):
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             # Get the GridFsManager from the app
-            client = self.app.client
+            client = self.app.client # type: ignore
             if client is None:
                 raise Exception("Not connected to database")
 
@@ -168,7 +174,7 @@ class DeleteConfirmationDialog(ModalScreen[None]):
             self.filename = filename
             super().__init__()
 
-    def __init__(self, bucket: str, file_id, filename: str, *args, **kwargs):
+    def __init__(self, bucket: str, file_id: Any, filename: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.bucket = bucket
         self.file_id = file_id
@@ -194,8 +200,8 @@ class DeleteConfirmationDialog(ModalScreen[None]):
     async def _do_delete(self) -> None:
         """Async deletion that posts a message on success"""
         try:
-            # Get the GridFsManager from the app
-            client = self.app.client
+            # Get the GridFsManager from the app - we know it's there, so ignore the warning
+            client = self.app.client # pyright: ignore[reportAttributeAccessIssue]
             if client is None:
                 raise Exception("Not connected to database")
 
@@ -217,7 +223,7 @@ class DeleteConfirmationDialog(ModalScreen[None]):
 
 class MongoView(Tree):
 
-    client: GridFsManager | None = reactive(None, init=False)
+    client: var[GridFsManager | None] = var(None, init=False)
 
     def watch_client(self, new_client: GridFsManager | None):
         """Called when client reactive property changes"""
@@ -358,7 +364,7 @@ class GridFsBrowser(App):
     TITLE = "GridnightCommander - Disconnected"
     CSS_PATH = "tcss/main.tcss"
 
-    client: reactive[GridFsManager | None] = reactive(None)
+    client: var[GridFsManager | None] = var(None)
 
     # def on_mount(self):
     #     self.screen.styles.background = "darkblue"
@@ -427,7 +433,7 @@ class GridFsBrowser(App):
             self.selected_file_info = None
 
     @work(exclusive=True)
-    async def _load_file_preview(self, bucket: str, file_id) -> None:
+    async def _load_file_preview(self, bucket: str, file_id: Any) -> None:
         """Load file content and update preview"""
         try:
             if self.client is None:
