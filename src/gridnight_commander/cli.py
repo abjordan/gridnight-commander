@@ -13,8 +13,8 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown, Select
 from textual.message import Message as TextualMessage
 
-from gridfs_manager import GridFsManager
-from util import escape_markup
+from gridnight_commander.gridfs_manager import GridFsManager
+from gridnight_commander.util import escape_markup
 
 class ConnectionScreen(ModalScreen[None]):
     """Screen with a dialog to connect to a server"""
