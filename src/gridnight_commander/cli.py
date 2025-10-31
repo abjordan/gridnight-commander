@@ -1,5 +1,6 @@
 import os
 from typing import Any
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -13,6 +14,8 @@ from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown, Select
 from textual.message import Message as TextualMessage
+from textual_fspicker import FileOpen
+from rich.syntax import Syntax
 
 from gridnight_commander.gridfs_manager import GridFsManager
 from gridnight_commander.util import escape_markup
@@ -96,6 +99,7 @@ class UploadDialog(ModalScreen[None]):
     def __init__(self, buckets: list[str], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.buckets = buckets
+        self.selected_file: Path | None = None
 
     def compose(self) -> ComposeResult:
         # Create bucket options
@@ -103,8 +107,9 @@ class UploadDialog(ModalScreen[None]):
 
         yield Grid(
             Label("Upload File to GridFS", id="upload_title"),
-            Label("File Path:"),
-            Input(placeholder="/path/to/file.txt", id="file_path"),
+            Label("Selected File:"),
+            Static("No file selected", id="file_display"),
+            Button("Browse...", variant="default", id="browse_btn"),
             Label("Bucket:"),
             Select(bucket_options, id="bucket_select", allow_blank=False),
             Label("Filename (optional):"),
@@ -117,10 +122,17 @@ class UploadDialog(ModalScreen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel_btn":
             self.dismiss()
-        else:
+        elif event.button.id == "browse_btn":
+            # Open file picker - must run in worker
+            self.run_worker(self._handle_file_browse())
+        elif event.button.id == "upload_btn":
+            # Validate file is selected
+            if self.selected_file is None:
+                self.notify("Please select a file first", severity="error")
+                return
+
             # Start upload
             self.query_one("#uploaddialog").loading = True
-            file_path = self.query_one("#file_path", Input).value
             bucket_select = self.query_one("#bucket_select", Select)
             bucket = bucket_select.value
             filename = self.query_one("#filename_input", Input).value or None
@@ -128,10 +140,23 @@ class UploadDialog(ModalScreen[None]):
             # Validate bucket is selected
             if isinstance(bucket, str):
                 # Run upload
-                self.run_worker(self._do_upload(file_path, bucket, filename))
+                self.run_worker(self._do_upload(str(self.selected_file), bucket, filename))
             else:
-                self.app.notify("Please select a bucket", severity="error")
+                self.notify("Please select a bucket", severity="error")
                 self.query_one("#uploaddialog").loading = False
+
+    async def _handle_file_browse(self) -> None:
+        """Handle file browsing - must run in worker context"""
+        try:
+            # Open file picker
+            if selected_file := await self.app.push_screen_wait(FileOpen()):
+                self.selected_file = selected_file
+                # Update display to show selected file
+                file_display = self.query_one("#file_display", Static)
+                file_display.update(str(selected_file))
+        except Exception as e:
+            self.app.log.error(f"File browse failed: {e}")
+            self.notify(f"Error browsing files: {escape_markup(str(e))}", severity="error")
 
     async def _do_upload(self, file_path: str, bucket: str, filename: str | None) -> None:
         """Async upload that posts a message on success"""
@@ -318,12 +343,25 @@ class FilePreview(Vertical):
         try:
             text_content = content.decode('utf-8')
 
-            # If it's a markdown file, render it
+            # Determine if we should use syntax highlighting
+            lexer_name = self._get_lexer_for_file(filename)
+
             if filename.endswith('.md'):
+                # Render markdown
                 scroll.mount(Markdown(text_content))
+            elif lexer_name:
+                # Use syntax highlighting for code files
+                syntax = Syntax(
+                    text_content,
+                    lexer_name,
+                    line_numbers=True,
+                    theme="monokai",
+                    word_wrap=False
+                )
+                scroll.mount(Static(syntax))
             else:
-                # Plain text
-                scroll.mount(Static(text_content))
+                # Plain text - escape markup to prevent errors
+                scroll.mount(Static(escape_markup(text_content)))
 
         except UnicodeDecodeError:
             # Binary file
@@ -339,6 +377,78 @@ class FilePreview(Vertical):
 
         metadata_widget = self.query_one("#preview_metadata", Static)
         metadata_widget.update(metadata_text)
+
+    def _get_lexer_for_file(self, filename: str) -> str | None:
+        """Determine the appropriate lexer name for syntax highlighting based on file extension"""
+        # Map file extensions to Pygments lexer names
+        extension_map = {
+            '.py': 'python',
+            '.js': 'javascript',
+            '.ts': 'typescript',
+            '.jsx': 'jsx',
+            '.tsx': 'tsx',
+            '.java': 'java',
+            '.c': 'c',
+            '.cpp': 'cpp',
+            '.cc': 'cpp',
+            '.cxx': 'cpp',
+            '.h': 'c',
+            '.hpp': 'cpp',
+            '.cs': 'csharp',
+            '.go': 'go',
+            '.rs': 'rust',
+            '.rb': 'ruby',
+            '.php': 'php',
+            '.swift': 'swift',
+            '.kt': 'kotlin',
+            '.scala': 'scala',
+            '.sh': 'bash',
+            '.bash': 'bash',
+            '.zsh': 'bash',
+            '.fish': 'fish',
+            '.ps1': 'powershell',
+            '.r': 'r',
+            '.sql': 'sql',
+            '.html': 'html',
+            '.htm': 'html',
+            '.xml': 'xml',
+            '.css': 'css',
+            '.scss': 'scss',
+            '.sass': 'sass',
+            '.less': 'less',
+            '.json': 'json',
+            '.yaml': 'yaml',
+            '.yml': 'yaml',
+            '.toml': 'toml',
+            '.ini': 'ini',
+            '.cfg': 'ini',
+            '.conf': 'ini',
+            '.dockerfile': 'docker',
+            '.Dockerfile': 'docker',
+            '.tex': 'latex',
+            '.lua': 'lua',
+            '.vim': 'vim',
+            '.el': 'elisp',
+            '.clj': 'clojure',
+            '.ex': 'elixir',
+            '.exs': 'elixir',
+            '.erl': 'erlang',
+            '.hs': 'haskell',
+            '.ml': 'ocaml',
+            '.pl': 'perl',
+            '.pm': 'perl',
+        }
+
+        # Get the file extension (lowercase)
+        for ext, lexer in extension_map.items():
+            if filename.lower().endswith(ext):
+                return lexer
+
+        # Special case for Dockerfile
+        if filename == 'Dockerfile' or filename.endswith('.dockerfile'):
+            return 'docker'
+
+        return None
 
     def _format_size(self, size: int) -> str:
         """Format byte size to human readable"""

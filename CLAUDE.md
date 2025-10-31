@@ -56,6 +56,8 @@ uv sync --extra dev
 - Uses reactive data binding for client state (`reactive[GridFsManager | None]`)
 - Key bindings:
   - `c`: Connect to server
+  - `u`: Upload file
+  - `d`: Delete file
   - `q`: Quit with confirmation dialog
 - Layout: Header → File tree (left) → Preview panel (right) → Footer
 
@@ -68,7 +70,30 @@ uv sync --extra dev
 **MongoView** ([cli.py](src/gridnight_commander/cli.py))
 - Textual Tree widget for displaying GridFS buckets and files
 - Uses reactive properties: `data` and `client`
-- Currently shows hardcoded Dune example data (needs implementation)
+- Dynamically populates tree from GridFS buckets and files
+- Uses `@work` decorator for async tree population
+
+**UploadDialog** ([cli.py](src/gridnight_commander/cli.py))
+- Modal screen for uploading files to GridFS buckets
+- Uses `textual-fspicker` library for file selection (FileOpen dialog)
+- Workflow: Browse for file → Select bucket → Optional custom filename → Upload
+- Validates file selection and bucket before uploading
+- Posts FileUploaded message to trigger tree refresh
+
+**DeleteConfirmationDialog** ([cli.py](src/gridnight_commander/cli.py))
+- Modal screen for confirming file deletion
+- Shows file and bucket name for confirmation
+- Posts FileDeleted message to trigger tree refresh and preview clear
+
+**FilePreview** ([cli.py](src/gridnight_commander/cli.py))
+- Widget for displaying file content and metadata
+- Supports syntax highlighting for code files using Rich's Syntax class
+- Recognizes 50+ file extensions (Python, JavaScript, Go, Rust, etc.)
+- Uses Monokai theme with line numbers for code
+- Markdown files rendered with Markdown widget
+- Plain text files displayed with escaped markup
+- Shows binary file indicator for non-text files
+- Displays metadata: filename, size, upload date, content type
 
 ### Styling
 - CSS stored in [tcss/main.tcss](src/gridnight_commander/tcss/main.tcss)
@@ -126,9 +151,18 @@ Environment variables in .env:
 - MONGO_SERVER
 - MONGO_PORT
 
-## Known Implementation Gaps
+## External Dependencies
 
-1. MongoView currently shows hardcoded "Dune" tree data instead of real GridFS buckets
-2. File preview panel not yet implemented
-3. Upload/delete functionality not yet implemented
-4. File metadata display not yet implemented
+### textual-fspicker
+- Provides filesystem picker dialogs for Textual applications
+- Used in UploadDialog for file selection
+- Returns `Path` objects via `push_screen_wait()` pattern
+- FileOpen dialog validates file existence by default
+- Will also be useful for download destination selection in future features
+
+### Rich (via Textual)
+- Textual is built on Rich and includes it as a dependency
+- FilePreview uses Rich's Syntax class for code highlighting
+- Supports Pygments lexers for 50+ programming languages
+- Configured with Monokai theme and line numbers enabled
+- No additional dependency installation required

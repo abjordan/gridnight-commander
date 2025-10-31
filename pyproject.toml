@@ -9,6 +9,7 @@ dependencies = [
     "pymongo>=4.11.3",
     "python-dotenv>=1.0.1",
     "textual>=2.1.2",
+    "textual-fspicker>=0.2.1",
 ]
 
 [tool.uv]
