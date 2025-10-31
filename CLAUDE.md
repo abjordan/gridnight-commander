@@ -58,6 +58,7 @@ uv sync --extra dev
   - `c`: Connect to server
   - `u`: Upload file
   - `d`: Delete file
+  - `s`: Save/Download file
   - `q`: Quit with confirmation dialog
 - Layout: Header → File tree (left) → Preview panel (right) → Footer
 
@@ -84,6 +85,13 @@ uv sync --extra dev
 - Modal screen for confirming file deletion
 - Shows file and bucket name for confirmation
 - Posts FileDeleted message to trigger tree refresh and preview clear
+
+**DownloadDialog** ([cli.py](src/gridnight_commander/cli.py))
+- Modal screen for downloading files from GridFS
+- Uses `textual-fspicker` library for destination selection (FileSave dialog)
+- Workflow: Browse for destination → Confirm download
+- Pre-fills the filename with the original GridFS filename
+- Posts FileDownloaded message on successful download
 
 **FilePreview** ([cli.py](src/gridnight_commander/cli.py))
 - Widget for displaying file content and metadata
@@ -155,10 +163,11 @@ Environment variables in .env:
 
 ### textual-fspicker
 - Provides filesystem picker dialogs for Textual applications
-- Used in UploadDialog for file selection
+- Used in UploadDialog for file selection (FileOpen dialog)
+- Used in DownloadDialog for destination selection (FileSave dialog)
 - Returns `Path` objects via `push_screen_wait()` pattern
 - FileOpen dialog validates file existence by default
-- Will also be useful for download destination selection in future features
+- FileSave dialog supports default_file parameter to pre-fill filename
 
 ### Rich (via Textual)
 - Textual is built on Rich and includes it as a dependency

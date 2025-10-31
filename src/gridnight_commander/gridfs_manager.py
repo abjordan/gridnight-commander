@@ -167,3 +167,30 @@ class GridFsManager:
         except Exception as e:
             print(f"Error deleting file {file_id}: {e}")
             raise e
+
+    async def download_file(self, bucket_name: str, file_id: Any, destination_path: str):
+        """
+        Download a file from GridFS to a local path.
+        :param bucket_name: Name of the GridFS bucket
+        :param file_id: The _id of the file to download
+        :param destination_path: Path where the file should be saved
+        """
+        if self.db is None:
+            raise Exception("Not connected to database")
+
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=bucket_name)
+
+        try:
+            # Open the file for reading
+            grid_out = await bucket.open_download_stream(file_id)
+
+            # Read the content
+            content = await grid_out.read()
+
+            # Write to destination
+            with open(destination_path, 'wb') as f:
+                f.write(content)
+
+        except Exception as e:
+            print(f"Error downloading file {file_id}: {e}")
+            raise e

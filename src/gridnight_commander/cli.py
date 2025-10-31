@@ -14,7 +14,7 @@ from textual.widget import Widget
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Tree, Header, Static, Button, Input, Footer, Label, Markdown, Select
 from textual.message import Message as TextualMessage
-from textual_fspicker import FileOpen
+from textual_fspicker import FileOpen, FileSave
 from rich.syntax import Syntax
 
 from gridnight_commander.gridfs_manager import GridFsManager
@@ -244,6 +244,95 @@ class DeleteConfirmationDialog(ModalScreen[None]):
             self.app.log.error(f"Delete failed: {e}")
             self.notify(f"Delete failed: {escape_markup(str(e))}", severity="error")
             self.query_one("#deletedialog").loading = False
+
+
+class DownloadDialog(ModalScreen[None]):
+    """Screen with a dialog to download files"""
+
+    class FileDownloaded(TextualMessage):
+        """Message sent when file download succeeds"""
+        def __init__(self, bucket: str, filename: str, destination: str) -> None:
+            self.bucket = bucket
+            self.filename = filename
+            self.destination = destination
+            super().__init__()
+
+    def __init__(self, bucket: str, file_id: Any, filename: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bucket = bucket
+        self.file_id = file_id
+        self.filename = filename
+        self.destination_path: Path | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Label("Download File from GridFS", id="download_title"),
+            Label(f"File: {self.filename}"),
+            Label(f"Bucket: {self.bucket}"),
+            Label("Destination:"),
+            Static("No destination selected", id="destination_display"),
+            Button("Browse...", variant="default", id="browse_btn"),
+            Button("Download", variant="primary", id="download_btn"),
+            Button("Cancel", id="cancel_btn"),
+            id="downloaddialog"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_btn":
+            self.dismiss()
+        elif event.button.id == "browse_btn":
+            # Open file picker for save location
+            self.run_worker(self._handle_destination_browse())
+        elif event.button.id == "download_btn":
+            # Validate destination is selected
+            if self.destination_path is None:
+                self.notify("Please select a destination first", severity="error")
+                return
+
+            # Start download
+            self.query_one("#downloaddialog").loading = True
+            self.run_worker(self._do_download())
+
+    async def _handle_destination_browse(self) -> None:
+        """Handle destination browsing - must run in worker context"""
+        try:
+            # Open file save picker with the original filename as default
+            if destination := await self.app.push_screen_wait(
+                FileSave(default_file=self.filename)
+            ):
+                self.destination_path = destination
+                # Update display to show selected destination
+                dest_display = self.query_one("#destination_display", Static)
+                dest_display.update(str(destination))
+        except Exception as e:
+            self.app.log.error(f"Destination browse failed: {e}")
+            self.notify(f"Error browsing destinations: {escape_markup(str(e))}", severity="error")
+
+    async def _do_download(self) -> None:
+        """Async download that posts a message on success"""
+        try:
+            if self.destination_path is None:
+                raise Exception("No destination selected")
+
+            # Get the GridFsManager from the app
+            client = self.app.client # pyright: ignore[reportAttributeAccessIssue]
+            if client is None:
+                raise Exception("Not connected to database")
+
+            # Download the file
+            await client.download_file(self.bucket, self.file_id, str(self.destination_path))
+
+            self.notify(f"Downloaded {self.filename} to {self.destination_path}", severity="information")
+
+            # Post message to parent app
+            self.post_message(self.FileDownloaded(self.bucket, self.filename, str(self.destination_path)))
+
+            # Dismiss the dialog
+            self.dismiss()
+        except Exception as e:
+            self.app.log.error(f"Download failed: {e}")
+            self.notify(f"Download failed: {escape_markup(str(e))}", severity="error")
+            self.query_one("#downloaddialog").loading = False
 
 
 class MongoView(Tree):
@@ -483,6 +572,7 @@ class GridFsBrowser(App):
         ("c", "do_connect", "Connect to server"),
         ("u", "do_upload", "Upload file"),
         ("d", "do_delete", "Delete file"),
+        ("s", "do_download", "Save/Download file"),
         ("q", "request_quit", "Quit")
     ]
 
@@ -611,6 +701,28 @@ class GridFsBrowser(App):
         # Refresh the tree to remove the deleted file
         mongo_view = self.query_one("#mongo_view", MongoView)
         mongo_view.refresh_tree()
+
+    def action_do_download(self) -> None:
+        """Open the download dialog"""
+        if self.client is None:
+            self.notify("Not connected to database", severity="warning")
+            return
+
+        if self.selected_file_info is None:
+            self.notify("No file selected. Select a file first.", severity="warning")
+            return
+
+        # Open download dialog
+        self.push_screen(DownloadDialog(
+            self.selected_file_info['bucket'],
+            self.selected_file_info['file_id'],
+            self.selected_file_info['filename']
+        ))
+
+    def on_download_dialog_file_downloaded(self, message: DownloadDialog.FileDownloaded) -> None:
+        """Handle successful file download"""
+        # No tree refresh needed for downloads
+        pass
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitScreen())

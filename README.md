@@ -12,10 +12,12 @@ GridNight Commander (`gnc`) is a [Midnight Commander](https://midnight-commander
 
 - **Browse GridFS Buckets** - View all GridFS buckets in your MongoDB database with expandable tree navigation
 - **File Preview** - Preview file contents with support for:
+  - Syntax highlighting for 50+ programming languages (Python, JavaScript, Go, Rust, etc.)
   - Text files (`.txt`, `.log`, `.csv`, etc.)
   - Markdown files (rendered with formatting)
   - Metadata display (filename, size, upload date, content type)
 - **Upload Files** - Add new files to any GridFS bucket with automatic MIME type detection
+- **Download Files** - Save files from GridFS to your local filesystem with file picker dialog
 - **Delete Files** - Remove files from buckets with confirmation dialog
 - **Live Connection** - Connect to any MongoDB instance with connection string support
 - **Keyboard-Driven** - Fast navigation with intuitive keyboard shortcuts
@@ -65,6 +67,7 @@ uv run python tests/test_delete.py    # Test deletion functionality
 |-----|--------|
 | `c` | Connect to MongoDB server |
 | `u` | Upload a file to selected bucket |
+| `s` | Save/Download selected file |
 | `d` | Delete selected file (with confirmation) |
 | `↑`/`↓` | Navigate tree |
 | `Enter` | Expand/collapse bucket |
@@ -80,10 +83,18 @@ uv run python tests/test_delete.py    # Test deletion functionality
 ### Uploading Files
 
 1. Press `u` to open the upload dialog
-2. Enter the local file path
+2. Click `Browse...` to select a file using the file picker
 3. Select the target GridFS bucket from the dropdown
 4. Optionally override the filename
-5. Press `Upload` or hit `Enter`
+5. Press `Upload` to complete
+
+### Downloading Files
+
+1. Select a file in the tree
+2. Press `s` to open the download dialog
+3. Click `Browse...` to choose a destination using the file picker
+4. The original filename is pre-filled; modify if desired
+5. Press `Download` to save the file locally
 
 ### Deleting Files
 
@@ -98,7 +109,8 @@ GridNight Commander is built with:
 
 - **[Textual](https://textual.textualize.io/)** - Modern Python TUI framework
 - **[Motor](https://motor.readthedocs.io/)** - Async MongoDB driver
-- **[Rich](https://rich.readthedocs.io/)** - Beautiful terminal formatting and Markdown rendering
+- **[Rich](https://rich.readthedocs.io/)** - Beautiful terminal formatting and syntax highlighting
+- **[textual-fspicker](https://github.com/davep/textual-fspicker)** - File picker dialogs for Textual
 
 ### Project Structure
 
@@ -160,13 +172,11 @@ MONGO_PORT=27017
 
 Current functionality includes all core features. Future enhancements may include:
 
-- File download functionality
 - Advanced search/filter
 - Bucket statistics (file count, total size)
 - Connection profiles for quick switching
-- File selection highlighting improvements
-
-See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for detailed development stages.
+- Bulk file operations (multi-select download/delete)
+- File transfer between buckets
 
 ## License
 
