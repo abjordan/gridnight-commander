@@ -158,6 +158,63 @@ class UploadDialog(ModalScreen[None]):
             self.query_one("#uploaddialog").loading = False
 
 
+class DeleteConfirmationDialog(ModalScreen[None]):
+    """Screen with a dialog to confirm file deletion"""
+
+    class FileDeleted(TextualMessage):
+        """Message sent when file deletion succeeds"""
+        def __init__(self, bucket: str, filename: str) -> None:
+            self.bucket = bucket
+            self.filename = filename
+            super().__init__()
+
+    def __init__(self, bucket: str, file_id, filename: str, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bucket = bucket
+        self.file_id = file_id
+        self.filename = filename
+
+    def compose(self) -> ComposeResult:
+        yield Grid(
+            Label(f"Delete '{self.filename}' from '{self.bucket}'?", id="delete_question"),
+            Label("This action cannot be undone!", classes="warning"),
+            Button("Delete", variant="error", id="delete_btn"),
+            Button("Cancel", variant="primary", id="cancel_btn"),
+            id="deletedialog"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_btn":
+            self.dismiss()
+        else:
+            # Start deletion
+            self.query_one("#deletedialog").loading = True
+            self.run_worker(self._do_delete())
+
+    async def _do_delete(self) -> None:
+        """Async deletion that posts a message on success"""
+        try:
+            # Get the GridFsManager from the app
+            client = self.app.client
+            if client is None:
+                raise Exception("Not connected to database")
+
+            # Delete the file
+            await client.delete_file(self.bucket, self.file_id)
+
+            self.notify(f"Deleted {self.filename} from {self.bucket}", severity="information")
+
+            # Post message to parent app
+            self.post_message(self.FileDeleted(self.bucket, self.filename))
+
+            # Dismiss the dialog
+            self.dismiss()
+        except Exception as e:
+            self.app.log.error(f"Delete failed: {e}")
+            self.notify(f"Delete failed: {escape_markup(str(e))}", severity="error")
+            self.query_one("#deletedialog").loading = False
+
+
 class MongoView(Tree):
 
     client: GridFsManager | None = reactive(None, init=False)
@@ -309,8 +366,12 @@ class GridFsBrowser(App):
     BINDINGS = [
         ("c", "do_connect", "Connect to server"),
         ("u", "do_upload", "Upload file"),
+        ("d", "do_delete", "Delete file"),
         ("q", "request_quit", "Quit")
     ]
+
+    # Track currently selected file for deletion
+    selected_file_info: dict | None = None
 
     def compose(self) -> ComposeResult:
         self.log.info("Staring GNC")
@@ -349,8 +410,21 @@ class GridFsBrowser(App):
                 file_info = node.data['file_info']
                 file_id = file_info['_id']
 
+                # Store selected file info for deletion
+                self.selected_file_info = {
+                    'bucket': bucket,
+                    'file_id': file_id,
+                    'filename': file_info['filename']
+                }
+
                 # Load and preview the file (worker will be started automatically)
                 worker = self._load_file_preview(bucket, file_id)
+            else:
+                # Not a file node (bucket node), clear selection
+                self.selected_file_info = None
+        else:
+            # No data, clear selection
+            self.selected_file_info = None
 
     @work(exclusive=True)
     async def _load_file_preview(self, bucket: str, file_id) -> None:
@@ -391,6 +465,34 @@ class GridFsBrowser(App):
     def on_upload_dialog_file_uploaded(self, message: UploadDialog.FileUploaded) -> None:
         """Handle successful file upload"""
         # Refresh the tree to show the new file
+        mongo_view = self.query_one("#mongo_view", MongoView)
+        mongo_view.refresh_tree()
+
+    def action_do_delete(self) -> None:
+        """Open the delete confirmation dialog"""
+        if self.client is None:
+            self.notify("Not connected to database", severity="warning")
+            return
+
+        if self.selected_file_info is None:
+            self.notify("No file selected. Select a file first.", severity="warning")
+            return
+
+        # Open confirmation dialog
+        self.push_screen(DeleteConfirmationDialog(
+            self.selected_file_info['bucket'],
+            self.selected_file_info['file_id'],
+            self.selected_file_info['filename']
+        ))
+
+    def on_delete_confirmation_dialog_file_deleted(self, message: DeleteConfirmationDialog.FileDeleted) -> None:
+        """Handle successful file deletion"""
+        # Clear the selected file
+        self.selected_file_info = None
+        # Clear the preview
+        preview = self.query_one("#file_preview", FilePreview)
+        preview.clear()
+        # Refresh the tree to remove the deleted file
         mongo_view = self.query_one("#mongo_view", MongoView)
         mongo_view.refresh_tree()
 

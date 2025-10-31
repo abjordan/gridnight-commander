@@ -203,7 +203,16 @@
 - Delete the currently previewed file (preview clears)
 - Verify deleted file no longer appears after tree refresh
 
-**Status**: Not Started
+**Status**: Complete ✅
+
+**Implementation Notes**:
+- Added `delete_file()` method to GridFsManager that deletes files by ID from GridFS
+- Created DeleteConfirmationDialog modal with file details and warning message
+- Added 'd' keyboard shortcut to trigger deletion when file is selected
+- Implemented `selected_file_info` tracking in GridFsBrowser to store currently selected file
+- Added message handler that clears selection, clears preview, and refreshes tree after deletion
+- Success/error notifications provide user feedback
+- Tested programmatically - deletion works correctly at GridFsManager level
 
 ---
 

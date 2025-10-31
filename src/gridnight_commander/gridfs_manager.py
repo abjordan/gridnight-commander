@@ -149,3 +149,20 @@ class GridFsManager:
         except Exception as e:
             print(f"Error uploading file {local_path}: {e}")
             raise e
+
+    async def delete_file(self, bucket_name: str, file_id):
+        """
+        Delete a file from GridFS.
+        :param bucket_name: Name of the GridFS bucket
+        :param file_id: The _id of the file to delete
+        """
+        if self.db is None:
+            raise Exception("Not connected to database")
+
+        bucket = AsyncIOMotorGridFSBucket(self.db, bucket_name=bucket_name)
+
+        try:
+            await bucket.delete(file_id)
+        except Exception as e:
+            print(f"Error deleting file {file_id}: {e}")
+            raise e
