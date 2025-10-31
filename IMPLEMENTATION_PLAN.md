@@ -1,19 +1,65 @@
 # GridNight Commander - Implementation Plan
 
-## Current State Summary
+## Current State Summary (Updated: 2025-10-30)
 
 ### What's Working ✅
-- Connection modal with async MongoDB connection
-- GridFsManager with bucket discovery (`list_gridfs_buckets()`)
-- Basic UI layout (header, tree panel, preview panel, footer)
-- Reactive data binding infrastructure
-- Test data generation script
 
-### What's Incomplete 🚧
-- MongoView displays hardcoded "Dune" data instead of real GridFS buckets
-- Preview pane shows static "TEST" placeholder
-- No file operations (upload, delete, download)
-- No file selection handling or metadata display
+**Core Functionality (All Stages 1-4 Complete)**:
+- ✅ **MongoDB Connection** - Modal dialog with async connection using Motor
+- ✅ **Dynamic File Tree** - Browse GridFS buckets and files with expandable tree navigation
+- ✅ **File Preview** - View text files and rendered Markdown with metadata display
+- ✅ **File Upload** - Add new files to any GridFS bucket with MIME type detection
+- ✅ **File Delete** - Remove files from buckets with confirmation dialog
+- ✅ **Keyboard Navigation** - Full keyboard-driven interface (c=connect, u=upload, d=delete, q=quit)
+- ✅ **Tree Refresh** - Automatic tree updates after upload/delete operations
+- ✅ **Error Handling** - Notifications for success/error states
+- ✅ **Test Infrastructure** - Data generation script and automated tests
+
+**Technical Implementation**:
+- GridFsManager with full CRUD operations (create, read, delete)
+- Message passing pattern for modal communication
+- Reactive properties with explicit refresh methods
+- Worker-based async operations with @work decorator
+- Proper package imports (gridnight_commander.*)
+
+### What Works Well ✅
+- Connection flow is reliable using message passing pattern
+- Tree population correctly displays all buckets and files
+- File preview handles both text and Markdown rendering
+- Upload workflow validates files and refreshes tree
+- Delete confirmation prevents accidental deletions
+- All operations provide user feedback via notifications
+
+### Known Issues & Limitations 🚧
+
+**Minor Issues**:
+- Scroll jumpiness when navigating long files in preview pane
+- No visual highlight for currently selected file (beyond tree cursor)
+- Preview content can be bottom-aligned on initial load
+- No download functionality (files can only be viewed, not saved locally)
+
+**Missing Features** (Stage 5):
+- File download to local filesystem
+- Bucket statistics (total files, total size)
+- Connection status indicator
+- Search/filter functionality
+- Connection profiles for quick switching
+
+**Technical Debt**:
+- Some widget ID management could be cleaner
+- Could benefit from more comprehensive error scenarios testing
+- No automated UI tests (only programmatic tests)
+
+### What's Left to Do 📋
+
+**Stage 5: Polish & UX Improvements** (Optional enhancements):
+1. Add file download functionality
+2. Improve visual feedback (selection highlighting, status indicators)
+3. Add bucket statistics display
+4. Enhanced keyboard navigation features
+5. Search/filter capabilities
+
+See Stage 5 section below for detailed breakdown.
 
 ---
 
@@ -219,51 +265,117 @@
 ### Stage 5: Polish & UX Improvements
 **Goal**: Enhance user experience with better visuals and conveniences
 
+**Status**: Partially Complete (Documentation Done, Features Optional)
+
+**Completed Items** ✅:
+- ✅ Documentation updates
+  - Comprehensive README with screenshot
+  - All keyboard shortcuts documented
+  - Installation and usage instructions
+  - Architecture documentation
+  - Troubleshooting via development section
+- ✅ Basic keyboard navigation (arrow keys, Enter already working via Textual)
+- ✅ Basic error handling with notifications
+
+**Remaining Optional Enhancements** 🚧:
+
+#### 1. File Download Functionality (High Priority)
+**Why**: Users can preview files but cannot save them locally
+
 **Tasks**:
-1. Add file selection highlighting
-   - Visual indicator for currently selected file
-   - Update CSS with highlight color/style
-
-2. Improve status bar/metadata display
-   - Show total file count per bucket
-   - Show total size of files in bucket
-   - Display connection status indicator
-
-3. Add keyboard shortcuts for navigation
-   - Arrow keys for file navigation (if not already working)
-   - Enter to toggle bucket expand/collapse
-   - `/` for search/filter (stretch goal)
-
-4. Improve error handling and user feedback
-   - Better error messages for common issues
-   - Connection lost detection and reconnect option
-   - Timeouts for long operations
-
-5. Add download functionality (stretch goal)
-   - Add `download_file(bucket_name, file_id, dest_path)` to GridFsManager
-   - Create SaveDialog for choosing destination
-   - Bind to keyboard shortcut (e.g., `s` for save)
-
-6. Documentation updates
-   - Update README with screenshots/demo
-   - Document all keyboard shortcuts
-   - Add troubleshooting section
+- Add `download_file(bucket_name, file_id, dest_path)` to GridFsManager
+- Create SaveDialog/DownloadDialog modal for choosing destination
+- Bind to keyboard shortcut (e.g., `s` for save/download)
+- Show progress indicator for large files
+- Refresh local file browser or provide confirmation
 
 **Success Criteria**:
-- Selected file clearly highlighted in tree
-- Status bar shows useful information
-- All keyboard shortcuts documented and working
-- Error messages are helpful and actionable
-- Optional: Files can be downloaded to local filesystem
+- User can press `s` on selected file to download
+- Dialog allows choosing save location and filename
+- File downloads successfully to local filesystem
+- Success notification confirms download location
 
-**Tests**:
-- Navigate through tree with keyboard
-- Verify visual feedback for all actions
+#### 2. Visual Selection Highlighting (Medium Priority)
+**Why**: Current tree cursor is subtle, could be more prominent
+
+**Tasks**:
+- Add CSS styling for selected file (background color, bold text)
+- Highlight currently selected file even when focus moves to dialog
+- Consider adding icon or marker next to selected file
+
+**Success Criteria**:
+- Selected file is visually distinct from others
+- Selection persists visually when dialogs open
+- Clear distinction between cursor position and selected file
+
+#### 3. Bucket Statistics Display (Medium Priority)
+**Why**: Would be helpful to see file counts and sizes at a glance
+
+**Tasks**:
+- Calculate total file count per bucket
+- Calculate total size per bucket
+- Display in tree node labels (e.g., "Dune/ (3 files, 2.4 KB)")
+- Add connection status indicator to header or footer
+- Show current database name in status area
+
+**Success Criteria**:
+- Bucket nodes show file count and total size
+- Header/footer shows connection status (Connected/Disconnected)
+- Current database name is visible
+
+#### 4. Search/Filter Functionality (Low Priority/Stretch)
+**Why**: Nice to have for databases with many files
+
+**Tasks**:
+- Add `/` keyboard shortcut to open search dialog
+- Filter tree to show only matching files
+- Support regex or simple substring matching
+- Highlight matched text in results
+- Clear filter easily (ESC key)
+
+**Success Criteria**:
+- User can press `/` to search
+- Tree filters to show only matching results
+- Easy to clear and return to full view
+- Search works across bucket and filename
+
+#### 5. Enhanced Error Handling (Low Priority)
+**Why**: Current error handling is basic but functional
+
+**Tasks**:
+- Add connection lost detection (periodic heartbeat)
+- Offer reconnect dialog when connection drops
+- Add timeouts for long operations (large file preview)
+- Better error messages for common MongoDB errors
+- Graceful degradation when operations fail
+
+**Success Criteria**:
+- App detects when MongoDB connection is lost
+- User can reconnect without restarting app
+- Long operations timeout gracefully
+- Error messages are specific and actionable
+
+#### 6. Additional Nice-to-Haves (Very Low Priority)
+- Connection profiles (save/load connection strings)
+- File rename functionality
+- Batch operations (multi-select delete)
+- Copy/move files between buckets
+- Export bucket contents as zip
+- Custom CSS themes
+
+**Tests for Remaining Items**:
+- Download file and verify contents match original
+- Verify visual feedback for selection
+- Test statistics calculations with various bucket sizes
+- Search/filter with different patterns
 - Test error scenarios (disconnect during operation)
-- Verify all shortcuts work as expected
-- Optional: Download file and verify contents match
 
-**Status**: Not Started
+**Priority Recommendation**:
+1. **File Download** - Most valuable missing feature
+2. **Visual Selection** - Quick UX win
+3. **Bucket Statistics** - Nice informational enhancement
+4. **Search/Filter** - Only needed for large collections
+5. **Enhanced Errors** - Current handling is adequate
 
 ---
 
@@ -327,11 +439,56 @@ Each stage builds on the previous, and stages 3-4 can be done in parallel if des
 
 ---
 
-## Next Steps
+## Project Status & Next Steps
 
-1. **Review this plan** - Ensure it matches your vision
-2. **Set up test environment** - Run `docker compose up -d` and `python tests/generate_data.py`
-3. **Start with Stage 1** - Get dynamic tree working first (foundation for everything else)
-4. **Iterate quickly** - Small commits, frequent testing
+### Current Status: **CORE FEATURES COMPLETE** ✅
 
-When ready, say "Let's start with Stage 1" and I'll begin implementation!
+All primary functionality (Stages 1-4) has been successfully implemented and tested:
+- ✅ Stage 1: Dynamic File Tree
+- ✅ Stage 2: File Preview
+- ✅ Stage 3: File Upload
+- ✅ Stage 4: File Delete
+- ✅ Documentation & README
+
+**The application is fully functional and ready to use!**
+
+### If You Want to Continue Development
+
+**Immediate Next Steps** (Optional):
+1. **Try it out!** - Run `uv run gnc` and test all features
+2. **Implement File Download** (Stage 5.1) - Most valuable missing feature
+3. **Add Visual Selection Highlighting** (Stage 5.2) - Quick UX improvement
+4. **Add Bucket Statistics** (Stage 5.3) - Nice informational enhancement
+
+**Getting Started with Development**:
+```bash
+# Ensure MongoDB is running
+docker compose up -d
+
+# Generate test data
+uv run python tests/generate_data.py
+
+# Run the application
+uv run gnc
+
+# Connect to test database
+# Connection: mongodb://devroot:devroot@localhost:27017/
+# Database: gnc-test
+```
+
+**Priority Order for Stage 5**:
+1. File Download (adds most user value)
+2. Visual Selection (quick UX win)
+3. Bucket Statistics (informational)
+4. Search/Filter (only if needed for large collections)
+5. Enhanced Errors (current handling is adequate)
+
+### Maintenance & Future Ideas
+
+The codebase is clean, documented, and follows established patterns. Future enhancements can build on the existing architecture:
+- Message passing for modals
+- @work decorator for async operations
+- Reactive properties with refresh methods
+- GridFsManager for all MongoDB operations
+
+See Stage 5 section above for detailed optional enhancement ideas.
