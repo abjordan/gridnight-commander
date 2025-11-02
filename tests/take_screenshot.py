@@ -24,7 +24,7 @@ async def take_screenshot():
 
     async with app.run_test() as pilot:
         # Wait for app to initialize
-        await pilot.pause(0.5)
+        await pilot.pause(3)
 
         # Press 'c' to open connection dialog
         await pilot.press("c")
@@ -32,7 +32,7 @@ async def take_screenshot():
 
         # Fill in connection details
         # Focus connection string input (should be first input)
-        await pilot.press("tab")  # Move to connection string
+        # await pilot.press("tab")  # Move to connection string
         # Clear and type connection string
         for _ in range(50):  # Clear existing text
             await pilot.press("backspace")
@@ -42,13 +42,13 @@ async def take_screenshot():
         await pilot.pause(0.2)
 
         # Move to database name
-        await pilot.press("tab")
-        for _ in range(20):
-            await pilot.press("backspace")
-        for char in "gnc-test":
-            await pilot.press(char)
+        # await pilot.press("tab")
+        # for _ in range(20):
+        #     await pilot.press("backspace")
+        # for char in "gnc-test":
+        #     await pilot.press(char)
 
-        await pilot.pause(0.2)
+        # await pilot.pause(0.2)
 
         # Submit the form (press Connect button)
         await pilot.press("tab")  # Move to Connect button
@@ -57,21 +57,24 @@ async def take_screenshot():
         # Wait for connection and tree population
         await pilot.pause(2.0)
 
-        # Expand Dune bucket (press enter on first tree node)
+        # Expand Dune bucket (press enter on second tree node)
         await pilot.press("down")  # Move to first bucket
+        await pilot.press("down")  # Move to second bucket
         await pilot.press("enter")  # Expand it
         await pilot.pause(0.5)
 
-        # Select a file
-        await pilot.press("down")  # Move to first file
-        await pilot.pause(0.5)
+        # Navigate to paul.md file (should be in Dune bucket)
+        # Files are alphabetically sorted: bene-gesserit.md, harkonnen.md, paul.md
+        await pilot.press("down")  # ai-risks.md
+        await pilot.pause(0.2)
+        await pilot.press("enter") # render the file
 
         # Take screenshot
         screenshot_path = Path("docs/screenshot.svg")
         screenshot_path.parent.mkdir(exist_ok=True)
 
         print(f"Taking screenshot to {screenshot_path}...")
-        pilot.app.save_screenshot(screenshot_path)
+        pilot.app.save_screenshot(str(screenshot_path))
 
         print(f"✅ Screenshot saved to {screenshot_path}")
 
