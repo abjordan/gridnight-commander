@@ -22,7 +22,17 @@ gnc = "gridnight_commander.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require a live MongoDB connection (deselect with '-m not integration')",
+]
+
 [project.optional-dependencies]
 dev = [
-    "textual-dev"
+    "textual-dev",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
 ]
