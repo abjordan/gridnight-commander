@@ -1,66 +1,93 @@
 """
-Test script to verify delete functionality works correctly
+Integration tests for GridFsManager.delete_file().
+
+These tests require a live MongoDB connection.  They are skipped by default;
+pass --run-integration (or set MONGO_INTEGRATION_TESTS=1) to enable them.
+
+The tests are self-contained: each one uploads a temporary file, operates
+on it, and cleans up after itself, so they do not depend on pre-existing
+data in the database.
 """
-import asyncio
+
+import pytest
+import tempfile
 import os
-from dotenv import load_dotenv
-from gridnight_commander.gridfs_manager import GridFsManager
+from pathlib import Path
 
-load_dotenv()
 
-user = os.getenv("MONGO_ROOT_USER")
-passwd = os.getenv("MONGO_ROOT_PASSWORD")
-server = os.getenv("MONGO_SERVER")
-port = os.getenv("MONGO_PORT")
+pytestmark = pytest.mark.integration
 
-connection_string = f"mongodb://{user}:{passwd}@{server}:{port}/"
 
-async def test_delete():
-    # Connect to test database
-    manager = GridFsManager(connection_string, db_name='gnc-test')
-    await manager.connect()
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    print("✅ Connected to database")
+TEST_BUCKET = "gnc-integration-test"
 
-    # List files in Dune bucket before deletion
-    print("\n📂 Files in Dune bucket BEFORE deletion:")
-    files_before = await manager.list_files_in_bucket('Dune')
-    for f in files_before:
-        print(f"  - {f['filename']} (id: {f['_id']})")
 
-    if not files_before:
-        print("❌ No files found in Dune bucket!")
-        return
-
-    # Delete the first file
-    file_to_delete = files_before[0]
-    print(f"\n🗑️  Deleting file: {file_to_delete['filename']} (id: {file_to_delete['_id']})")
-
+async def _upload_temp_file(manager, content: bytes = b"test content", filename: str = "test.txt") -> str:
+    """Upload a throwaway file and return its file_id."""
+    with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1], delete=False) as f:
+        f.write(content)
+        tmp_path = f.name
     try:
-        await manager.delete_file('Dune', file_to_delete['_id'])
-        print("✅ File deleted successfully")
-    except Exception as e:
-        print(f"❌ Error deleting file: {e}")
-        return
+        file_id = await manager.upload_file(TEST_BUCKET, tmp_path, filename=filename)
+    finally:
+        os.unlink(tmp_path)
+    return file_id
 
-    # List files after deletion
-    print("\n📂 Files in Dune bucket AFTER deletion:")
-    files_after = await manager.list_files_in_bucket('Dune')
-    for f in files_after:
-        print(f"  - {f['filename']} (id: {f['_id']})")
 
-    # Verify file was actually deleted
-    if len(files_after) == len(files_before) - 1:
-        print(f"\n✅ SUCCESS! File count decreased from {len(files_before)} to {len(files_after)}")
+# ---------------------------------------------------------------------------
+# delete_file() integration tests
+# ---------------------------------------------------------------------------
 
-        # Verify the specific file is gone
-        deleted_file_ids = [f['_id'] for f in files_after]
-        if file_to_delete['_id'] not in deleted_file_ids:
-            print(f"✅ Verified: {file_to_delete['filename']} is no longer in the bucket")
-        else:
-            print(f"❌ FAILED: {file_to_delete['filename']} still exists!")
-    else:
-        print(f"❌ FAILED! Expected {len(files_before) - 1} files, but found {len(files_after)}")
+async def test_delete_removes_file_from_bucket(live_manager):
+    """Uploaded file is absent from the bucket after deletion."""
+    file_id = await _upload_temp_file(live_manager, b"to be deleted", "delete_me.txt")
 
-if __name__ == "__main__":
-    asyncio.run(test_delete())
+    files_before = await live_manager.list_files_in_bucket(TEST_BUCKET)
+    ids_before = [f["_id"] for f in files_before]
+    assert file_id in ids_before, "File should exist before deletion"
+
+    await live_manager.delete_file(TEST_BUCKET, file_id)
+
+    files_after = await live_manager.list_files_in_bucket(TEST_BUCKET)
+    ids_after = [f["_id"] for f in files_after]
+    assert file_id not in ids_after, "File should be absent after deletion"
+
+
+async def test_delete_reduces_file_count_by_one(live_manager):
+    """Bucket file count decreases by exactly 1 after a single deletion."""
+    file_id = await _upload_temp_file(live_manager, b"count test", "count_test.txt")
+
+    files_before = await live_manager.list_files_in_bucket(TEST_BUCKET)
+    count_before = len(files_before)
+
+    await live_manager.delete_file(TEST_BUCKET, file_id)
+
+    files_after = await live_manager.list_files_in_bucket(TEST_BUCKET)
+    assert len(files_after) == count_before - 1
+
+
+async def test_delete_other_files_unaffected(live_manager):
+    """Deleting one file leaves other files in the bucket intact."""
+    id_keep = await _upload_temp_file(live_manager, b"keep me", "keep.txt")
+    id_delete = await _upload_temp_file(live_manager, b"delete me", "delete.txt")
+
+    await live_manager.delete_file(TEST_BUCKET, id_delete)
+
+    remaining_ids = [f["_id"] for f in await live_manager.list_files_in_bucket(TEST_BUCKET)]
+    assert id_keep in remaining_ids, "Sibling file should still exist"
+    assert id_delete not in remaining_ids, "Deleted file should be gone"
+
+    # Cleanup
+    await live_manager.delete_file(TEST_BUCKET, id_keep)
+
+
+async def test_delete_nonexistent_file_raises(live_manager):
+    """Deleting a file ID that does not exist raises an exception."""
+    from bson import ObjectId
+    fake_id = ObjectId()
+
+    with pytest.raises(Exception):
+        await live_manager.delete_file(TEST_BUCKET, fake_id)
